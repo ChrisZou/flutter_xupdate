@@ -14,7 +14,6 @@ import com.xuexiang.xupdate.entity.UpdateError;
 import com.xuexiang.xupdate.listener.OnUpdateFailureListener;
 import com.xuexiang.xupdate.utils.UpdateUtils;
 
-import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -25,7 +24,6 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
 
 /**
  * FlutterXUpdatePlugin
@@ -39,7 +37,7 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
 
     private MethodChannel mMethodChannel;
     private Application mApplication;
-    private WeakReference<Activity> mActivity;
+    private Activity mActivity;
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
@@ -52,13 +50,7 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
         mMethodChannel.setMethodCallHandler(null);
         mMethodChannel = null;
-    }
-
-    public FlutterXUpdatePlugin initPlugin(MethodChannel methodChannel, Registrar registrar) {
-        mMethodChannel = methodChannel;
-        mApplication = (Application) registrar.context().getApplicationContext();
-        mActivity = new WeakReference<>(registrar.activity());
-        return this;
+        mApplication = null;
     }
 
     @Override
@@ -94,7 +86,7 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
     private void initXUpdate(MethodCall call, Result result) {
         Map<String, Object> map = (Map<String, Object>) call.arguments;
         Boolean debug = (Boolean) map.get("debug");
-        Boolean isGet = (Boolean) map.get("isGet");
+        Boolean isPost = (Boolean) map.get("isPost");
         Integer timeout = (Integer) map.get("timeout");
         Boolean isPostJson = (Boolean) map.get("isPostJson");
         Boolean isWifiOnly = (Boolean) map.get("isWifiOnly");
@@ -107,7 +99,7 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
         XUpdate.get()
                 .debug(debug)
                 //默认设置使用get请求检查版本
-                .isGet(isGet)
+                .isGet(!(isPost != null && isPost))
                 //默认设置只在wifi下检查版本更新
                 .isWifiOnly(isWifiOnly)
                 //默认设置非自动模式，可根据具体使用配置
@@ -148,8 +140,9 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
      * @param result
      */
     private void checkUpdate(MethodCall call, Result result) {
-        if (mActivity == null || mActivity.get() == null) {
+        if (mActivity == null) {
             result.error("1001", "Not attach a Activity", null);
+            return;
         }
 
         String url = call.argument("url");
@@ -168,7 +161,7 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
         String retryContent = call.argument("retryContent");
         String retryUrl = call.argument("retryUrl");
 
-        UpdateManager.Builder builder = XUpdate.newBuild(mActivity.get())
+        UpdateManager.Builder builder = XUpdate.newBuild(mActivity)
                 .updateUrl(url)
                 .isAutoMode(isAutoMode)
                 .supportBackgroundUpdate(supportBackgroundUpdate);
@@ -191,8 +184,9 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
      * @param result
      */
     private void updateByInfo(MethodCall call, Result result) {
-        if (mActivity == null || mActivity.get() == null) {
+        if (mActivity == null) {
             result.error("1001", "Not attach a Activity", null);
+            return;
         }
 
         HashMap<String, Object> map = call.argument("updateEntity");
@@ -213,7 +207,7 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
         String retryUrl = call.argument("retryUrl");
 
 
-        UpdateManager.Builder builder = XUpdate.newBuild(mActivity.get())
+        UpdateManager.Builder builder = XUpdate.newBuild(mActivity)
                 .isAutoMode(isAutoMode)
                 .supportBackgroundUpdate(supportBackgroundUpdate);
 
@@ -242,7 +236,7 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
             builder.promptThemeColor(Color.parseColor(themeColor));
         }
         if (!TextUtils.isEmpty(topImageRes)) {
-            int topImageResId = mActivity.get().getResources().getIdentifier(topImageRes, "drawable", mActivity.get().getPackageName());
+            int topImageResId = mActivity.getResources().getIdentifier(topImageRes, "drawable", mActivity.getPackageName());
             builder.promptTopResId(topImageResId);
         }
         if (!TextUtils.isEmpty(buttonTextColor)) {
@@ -269,33 +263,29 @@ public class FlutterXUpdatePlugin implements FlutterPlugin, ActivityAware, Metho
     private void showRetryUpdateTipDialog(MethodCall call, Result result) {
         String retryContent = call.argument("retryContent");
         String retryUrl = call.argument("retryUrl");
-
-        RetryUpdateTipDialog.show(retryContent, retryUrl);
+        if (mActivity != null) {
+            RetryUpdateTipDialog.show(retryContent, retryUrl);
+        }
     }
 
 
     @Override
     public void onAttachedToActivity(ActivityPluginBinding binding) {
-        mActivity = new WeakReference<>(binding.getActivity());
+        mActivity = binding.getActivity();
     }
 
     @Override
     public void onDetachedFromActivityForConfigChanges() {
-
+        mActivity = null;
     }
 
     @Override
     public void onReattachedToActivityForConfigChanges(ActivityPluginBinding binding) {
-
+        mActivity = binding.getActivity();
     }
 
     @Override
     public void onDetachedFromActivity() {
         mActivity = null;
-    }
-
-    public static void registerWith(Registrar registrar) {
-        final MethodChannel channel = new MethodChannel(registrar.messenger(), PLUGIN_NAME);
-        channel.setMethodCallHandler(new FlutterXUpdatePlugin().initPlugin(channel, registrar));
     }
 }
